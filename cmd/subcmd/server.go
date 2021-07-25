@@ -1,3 +1,4 @@
+// Package subcmd is for all subcmds in the cmd tree
 package subcmd
 
 import (

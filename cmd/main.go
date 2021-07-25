@@ -19,6 +19,7 @@ func main() {
 	}
 
 	rootCmd.AddCommand(subcmd.ServerCmd)
+	rootCmd.AddCommand(subcmd.VersionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		logrus.Errorf("error executing cmd: %v", err)

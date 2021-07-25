@@ -12,7 +12,10 @@ tasks:
     silent: true
   build:
     cmds:
-      - go build -o camera cmd/main.go
+      - go build -ldflags="-X 'github.com/milligan22963/cmra/pkg/version.VersionString=v1.0.0'" -o camera cmd/main.go
+  build-release:
+    cmds:
+      - go build -ldflags="-X 'github.com/milligan22963/cmra/pkg/version.VersionString=v1.0.0' -s -w" -o camera cmd/main.go
   lint:
     cmds:
       - golangci-lint run cmd/main.go
