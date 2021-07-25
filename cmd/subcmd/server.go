@@ -1,7 +1,7 @@
 package subcmd
 
 import (
-	"Camera/pkg/server"
+	"github.com/milligan22963/cmra/pkg/server"
 
 	"github.com/spf13/cobra"
 )

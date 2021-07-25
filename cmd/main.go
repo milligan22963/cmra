@@ -1,7 +1,7 @@
 package main
 
 import (
-	"cmd/main.go/cmd/subcmd"
+	"github.com/milligan22963/cmra/cmd/subcmd"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
