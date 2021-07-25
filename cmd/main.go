@@ -7,13 +7,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cli struct {
-	Port uint16 `help:"Default serving port."`
+var rootCmd = &cobra.Command{
+	Use:   "AFMCamera",
+	Short: "A camera application",
+	Long:  `An application to interface with the pi camera and give a web view for it`,
+	Run: func(cmd *cobra.Command, args []string) {
+		// Do Stuff Here
+	},
+}
+
+func init() {
+
 }
 
 func main() {
 	logrus.Info("starting up")
-	var rootCmd = &cobra.Command{Use: "Set port to listen on"}
 	rootCmd.AddCommand(subcmd.ServerCmd)
 	rootCmd.Execute()
 }
