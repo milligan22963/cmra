@@ -19,3 +19,6 @@ tasks:
   lint:
     cmds:
       - golangci-lint run cmd/main.go
+  run:
+    cmds:
+      - ./camera server --config settings.yaml

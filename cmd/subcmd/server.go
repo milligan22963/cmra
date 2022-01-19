@@ -2,8 +2,8 @@
 package subcmd
 
 import (
+	"github.com/milligan22963/cmra/config"
 	"github.com/milligan22963/cmra/pkg/server"
-	"github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"
 )
@@ -14,13 +14,15 @@ var ServerCmd = &cobra.Command{
 	Short: "Server hosts the web site",
 	Long:  `A base server interface running on a device`,
 	Run: func(cmd *cobra.Command, args []string) {
-		port, err := cmd.Flags().GetInt("port")
+		configFile, err := cmd.Flags().GetString("config")
 		if err != nil {
-			logrus.Errorf("bad port: %v", err)
+			panic("Unable to find config flag")
 		}
-		logrus.Infof("listening on port: %v", port)
-		serverInstance := server.ServerInstance{ServerPort: port}
 
-		serverInstance.Run()
+		appConfig := config.NewSiteConfiguration(configFile, false)
+
+		serverInstance := server.ServerInstance{}
+
+		serverInstance.Run(appConfig)
 	},
 }

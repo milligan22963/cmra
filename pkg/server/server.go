@@ -2,13 +2,13 @@
 package server
 
 import (
-	"context"
 	"fmt"
-	"net/http"
-	"strconv"
-	"sync"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/sirupsen/logrus"
+	"github.com/milligan22963/cmra/config"
+	"github.com/milligan22963/cmra/pkg/web"
 )
 
 // HTTPResponse is a structure defining what a response should look like
@@ -17,54 +17,39 @@ type HTTPResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-// GenerateHomePage generates the home page for this site
-func GenerateHomePage(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Welcome to the HomePage!")
-}
-
-func setupWebserver(siteConfig *config.SiteConfiguration) {
-	httpServerDone := &sync.WaitGroup{}
-	router := mux.NewRouter().StrictSlash(true)
-
-	serverPort := viper.GetInt(config.WebServerPort)
-	serverAddress := viper.GetString(config.WebServerAddress)
-	router.HandleFunc("/", server.GenerateHomePage)
-	server := &http.Server{Addr: serverAddress + ":" + strconv.Itoa(serverPort), Handler: router}
-
-	httpServerDone.Add(1) // Add before our go routine
-	go func() {
-		defer httpServerDone.Done()
-
-		if err := server.ListenAndServe(); err != nil {
-			logrus.Errorf("http listen error: %v", err)
-		}
-	}()
-
-	<-siteConfig.AppActive
-
-	ctx, cancel := context.WithTimeout(context.Background(), httpWait)
-	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		logrus.Errorf("server shutdown error: %v", err)
-	}
-
-	// wait for the server func to finish
-	httpServerDone.Wait()
-}
-
 // ServerInstance is an instance of server
 type ServerInstance struct {
 	ServerPort int
 }
 
-func (server *ServerInstance) Run() {
+func (server *ServerInstance) waitForExit() {
+	signals := make(chan os.Signal, 1)
+	doneFlag := make(chan bool, 1)
+
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-signals
+		fmt.Println("\nending operation")
+		doneFlag <- true
+	}()
+
+	<-doneFlag
+}
+
+func (server *ServerInstance) Run(appConfig *config.AppConfiguration) {
+	defer func() {
+		if appConfig.Database != nil {
+			appConfig.Database.Close()
+		}
+	}()
+
+	webServer := web.WebServer{}
+
 	// server up the world
-	go setupWebserver()
+	go webServer.SetupWebserver(appConfig)
 
-	quitReason := cmd.process(siteConfig)
+	server.waitForExit()
 
-	siteConfig.AppActive <- struct{}{}
-
-	_ = siteConfig.Database.Close()
-
+	appConfig.AppActive <- struct{}{}
 }

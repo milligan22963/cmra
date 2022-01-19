@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
+	"github.com/milligan22963/afmlog"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -23,30 +23,40 @@ const (
 	defaultMQTTPort    = 1883
 	defaultFileOptions = 0600
 	defaultWebPort     = 8080
+	mysqlDBType        = "mysql"
+	sqlliteDBType      = "sqlite"
+	postGRESDBType     = "postgres"
 )
 
-// ConfigurationDetails stores the configuration that will be used
-var ConfigurationDetails = map[string]interface{}{
-	BrokerAddress:        "127.0.0.1",
-	BrokerPort:           defaultMQTTPort,
-	BrokerSSL:            false,
-	BrokerPrivateKeyPath: "/etc/afm/ssl",
-	BrokerPublicKeyPath:  "/etc/afm/ssl",
-	BrokerCAPath:         "/etc/afm/ssl",
+type BrokerSettings struct {
+	Address        string `yaml:"br_address"`
+	Port           int    `yaml:"br_port"`
+	UseSSL         bool   `yaml:"br_use_ssl"`
+	PrivateKeyPath string `yaml:"br_private_key_path"`
+	PublicKeyPath  string `yaml:"br_public_key_path"`
+	CAPath         string `yaml:"br_ca_path"`
+}
 
-	DatabaseName: "afmcamera",
-	DatabaseHost: "localhost",
-	DatabasePort: defaultSQLPort,
-	DatabaseType: defaultSQLType,
+type DatabaseSettings struct {
+	Name     string `yaml:"db_name"`
+	User     string `yaml:"db_user"`
+	Password string `yaml:"db_password"`
+	Host     string `yaml:"db_host"`
+	Port     int    `yaml:"db_port"`
+	Type     string `yaml:"type"`
+}
 
-	LoggingUseFile: true,
-	LoggingFile:    "/var/log/afm/camera.log",
-	LoggingLevel:   "error",
-	LoggingFormat:  "text",
+type WebServerSettings struct {
+	Host     string `yaml:"ws_host"`
+	FileRoot string `yaml:"ws_root"`
+	Port     int    `yaml:"ws_port"`
+}
 
-	WebServerAddress: "localhost",
-	WebServerFiles:   "/var/www/html",
-	WebServerPort:    defaultWebPort,
+type CameraConfiguration struct {
+	BrokerSettings    BrokerSettings       `yaml:"broker"`
+	DatabaseSettings  DatabaseSettings     `yaml:"database"`
+	WebServerSettings WebServerSettings    `yaml:"website"`
+	LogSettings       afmlog.Configuration `yaml:"log"`
 }
 
 // DefaultConfigPath to our default config
@@ -59,13 +69,14 @@ type DatabaseQueryResponse struct {
 	Err      error
 }
 
-// SiteConfiguration is configuration
-type SiteConfiguration struct {
-	AppActive    chan struct{}
-	IncomingMQTT chan [2]string
-	OutgoingMQTT chan [3]string
-	ClientID     string
-	Database     *sqlx.DB
+// AppConfiguration is configuration
+type AppConfiguration struct {
+	CameraConfiguration CameraConfiguration
+	AppActive           chan struct{}
+	IncomingMQTT        chan [2]string
+	OutgoingMQTT        chan [3]string
+	ClientID            string
+	Database            *sqlx.DB
 }
 
 func determineCurrentIP() (string, error) {
@@ -175,61 +186,29 @@ func determineDeviceClientID() string {
 	return "id_failure"
 }
 
-func initializeConfigurationOptions(configFilePath string) {
-	for k, v := range ConfigurationDetails {
-		viper.SetDefault(k, v)
-	}
+func (configuration *CameraConfiguration) LoadConfiguration(filename string) error {
+	fileContents, err := ioutil.ReadFile(filepath.Clean(filename))
 
-	viper.SetConfigFile(configFilePath)
-
-	err := viper.ReadInConfig()
 	if err != nil {
-		if os.IsNotExist(err) {
-			logrus.Warnf("configuration file: %s does not exist.", configFilePath)
-		} else {
-			logrus.Errorf("configuration file is invalid: %v", err)
-		}
+		return err
 	}
+
+	err = yaml.Unmarshal(fileContents, configuration)
+	if err != nil {
+		return err
+	}
+	return configuration.LogSettings.LoadConfiguration()
 }
 
-func initializeLogging() {
-	desiredLevel := logrus.ErrorLevel
-
-	var err error
-	if viper.IsSet(LoggingLevel) {
-		desiredLevel, err = logrus.ParseLevel(viper.GetString(LoggingLevel))
-		if err != nil {
-			desiredLevel = logrus.ErrorLevel // if failure then set to error
-		}
-	}
-
-	logrus.SetLevel(desiredLevel)
-
-	loggingFormat := viper.GetString(LoggingFormat)
-	if loggingFormat == "json" {
-		logrus.SetFormatter(&logrus.JSONFormatter{})
-	} else {
-		logrus.SetFormatter(&logrus.TextFormatter{})
-	}
-
-	if viper.IsSet(LoggingUseFile) && viper.IsSet(LoggingFile) {
-		file, err := os.OpenFile(viper.GetString(LoggingFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultFileOptions)
-		// if no failure output to file, otherwise default to stderr/stdouts
-		if err == nil {
-			logrus.SetOutput(file)
-		}
-	}
-}
-
-func setupDatabase(initialDBNameConnect bool) *sqlx.DB {
-	connectionString := viper.GetString(DatabaseUser) + ":" + viper.GetString(DatabasePassword)
-	connectionString += "@tcp(" + viper.GetString(DatabaseHost) + ":" + strconv.Itoa(viper.GetInt(DatabasePort)) + ")/"
+func (configuration *CameraConfiguration) SetupDatabase(initialDBNameConnect bool) *sqlx.DB {
+	connectionString := configuration.DatabaseSettings.User + ":" + configuration.DatabaseSettings.Password
+	connectionString += "@tcp(" + configuration.DatabaseSettings.Host + ":" + strconv.Itoa(configuration.DatabaseSettings.Port) + ")/"
 
 	if initialDBNameConnect {
-		connectionString += viper.GetString(DatabaseName)
+		connectionString += configuration.DatabaseSettings.Name
 	}
 
-	database, err := sqlx.Open("mysql", connectionString)
+	database, err := sqlx.Open(configuration.DatabaseSettings.Type, connectionString)
 
 	if err != nil {
 		panic(err.Error())
@@ -238,36 +217,26 @@ func setupDatabase(initialDBNameConnect bool) *sqlx.DB {
 	return database
 }
 
+func (appConfig *AppConfiguration) GetLogger() *afmlog.Log {
+	return appConfig.CameraConfiguration.LogSettings.UserLog
+}
+
 // NewSiteConfiguration creates an instance of the site configuration struct
-func NewSiteConfiguration(cfgFileOverride string, initialDBNameConnect bool) *SiteConfiguration {
-
-	viper.SetEnvPrefix("camera")
-	viper.AutomaticEnv()
-
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-
-	// Use default, then try env defined override
-	// finally look at passed in command line option
-	configPath := DefaultConfigPath
-	if viper.IsSet(OverrideConfigFile) {
-		configPath = viper.GetString(OverrideConfigFile)
+func NewSiteConfiguration(configFile string, initialDBNameConnect bool) *AppConfiguration {
+	appConfig := &AppConfiguration{
+		CameraConfiguration: CameraConfiguration{},
+		AppActive:           make(chan struct{}),
+		IncomingMQTT:        make(chan [2]string),
+		OutgoingMQTT:        make(chan [3]string),
+		ClientID:            determineDeviceClientID(),
+		Database:            nil,
 	}
 
-	if len(cfgFileOverride) > 0 {
-		configPath = cfgFileOverride
+	//	appConfig.Database = appConfig.CameraConfiguration.SetupDatabase(initialDBNameConnect)
+	err := appConfig.CameraConfiguration.LoadConfiguration(configFile)
+	if err != nil {
+		panic(err)
 	}
 
-	initializeConfigurationOptions(configPath)
-
-	initializeLogging()
-
-	siteConfig := &SiteConfiguration{
-		AppActive:    make(chan struct{}),
-		IncomingMQTT: make(chan [2]string),
-		OutgoingMQTT: make(chan [3]string),
-		ClientID:     determineDeviceClientID(),
-		Database:     setupDatabase(initialDBNameConnect),
-	}
-
-	return siteConfig
+	return appConfig
 }

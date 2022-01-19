@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/milligan22963/cmra/cmd/subcmd"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -13,16 +12,16 @@ func main() {
 		Long:  `An application to interface with the pi camera and give a web view for it`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Do Stuff Here
-			logrus.Info("starting up")
+			print("starting up\n")
 		},
 	}
 
 	rootCmd.AddCommand(subcmd.ServerCmd)
-	subcmd.ServerCmd.Flags().IntP("port", "p", 9001, "port on which the server will listen")
+	subcmd.ServerCmd.Flags().String("config", "settings.yaml", "configuration file")
 
 	rootCmd.AddCommand(subcmd.VersionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
-		logrus.Errorf("error executing cmd: %v", err)
+		println("failed to initialize: ", err.Error())
 	}
 }
