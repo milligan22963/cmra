@@ -30,7 +30,8 @@ func (webserver *WebServer) SetupWebserver(appConfig *config.AppConfiguration) {
 
 	serverPort := appConfig.CameraConfiguration.WebServerSettings.Port
 	serverAddress := appConfig.CameraConfiguration.WebServerSettings.Host
-	router.HandleFunc("/", webserver.GenerateHomePage)
+	//	router.HandleFunc("/", webserver.GenerateHomePage)
+	router.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir(appConfig.CameraConfiguration.WebServerSettings.FileRoot))))
 	server := &http.Server{Addr: serverAddress + ":" + strconv.Itoa(serverPort), Handler: router}
 
 	webserver.logger.Informationf("Address: %v, Port: %d", serverAddress, serverPort)
